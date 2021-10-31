@@ -22,11 +22,15 @@ import time
 import torch
 import torchvision
 import torchvision.transforms as transforms
+import torchvision.transforms.functional as TF
 from PIL import Image
 import math
 import os
 import statistics
 from alexnet_pytorch import AlexNet
+from random import shuffle
+import types
+import collections
 
 dir = "/home/tristen/research/imagenet-mini/train"
 
@@ -38,8 +42,9 @@ def tensor_to_image(pp, path):
     torchvision.utils.save_image(tensor=input_batch,fp=path)
 
 def py_test(process, text, n_tests):
-
+    
     times = []
+    img_list = []
     c = 0
     for subdir, dirs, files in os.walk(dir):
         if c >= n_tests:
@@ -49,22 +54,24 @@ def py_test(process, text, n_tests):
                 break
             if(filename.endswith(".JPEG")):
                 c += 1
-                img = os.path.join(subdir, filename)
-                
-                t_start = timer()
-                input_image = Image.open(img)
-                
-                # Preprocess image
-                preprocess = transforms.Compose([  
-                    process,
-                    transforms.ToTensor()
-                ])
-                input_tensor = preprocess(input_image)
-                input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
-                
-                t = timer() - t_start
-                times.append(t)
+                img_list.append(os.path.join(subdir, filename))
 
+    
+    for i in range(n_tests):
+        
+        img = Image.open(img_list[i])
+        t_start = timer()
+        # Preprocess image
+        preprocess = transforms.Compose([  
+        process,
+        transforms.ToTensor()
+        ])
+        input_tensor = preprocess(img)
+        input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
+
+        t = timer() - t_start
+        times.append(t)
+                
     t_min = min(times)
     t_max = max(times)
     t_avg = sum(times)/len(times)
@@ -77,6 +84,7 @@ def py_test(process, text, n_tests):
 def py_test_norm(process, text, n_tests):
 
     times = []
+    img_list = []
     c = 0
     for subdir, dirs, files in os.walk(dir):
         if c >= n_tests:
@@ -86,21 +94,22 @@ def py_test_norm(process, text, n_tests):
                 break
             if(filename.endswith(".JPEG")):
                 c += 1
-                img = os.path.join(subdir, filename)
-                
-                t_start = timer()
-                input_image = Image.open(img)
+                img_list.append(os.path.join(subdir, filename))
 
-                # Preprocess image
-                preprocess = transforms.Compose([  
-                transforms.ToTensor(),
-                process
-                ])
-                input_tensor = preprocess(input_image)
-                input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
-            
-                t = timer() - t_start
-                times.append(t)
+    for i in range(n_tests):
+        img = Image.open(img_list[i])
+        t_start = timer()
+
+        # Preprocess image
+        preprocess = transforms.Compose([  
+        transforms.ToTensor(),
+        process
+        ])
+        input_tensor = preprocess(img)
+        input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
+
+        t = timer() - t_start
+        times.append(t)
 
     t_min = min(times)
     t_max = max(times)
@@ -114,6 +123,7 @@ def py_test_norm(process, text, n_tests):
 def py_test_cmn(process, text, n_tests):
 
     times = []
+    img_list = []
     c = 0
     for subdir, dirs, files in os.walk(dir):
         if c >= n_tests:
@@ -123,23 +133,24 @@ def py_test_cmn(process, text, n_tests):
                 break
             if(filename.endswith(".JPEG")):
                 c += 1
-                img = os.path.join(subdir, filename)
-                
-                t_start = timer()
-                input_image = Image.open(img)
+                img_list.append(os.path.join(subdir, filename))
 
-                # Preprocess image
-                preprocess = transforms.Compose([  
-                transforms.CenterCrop(256),
-                transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                process
-                ])
-                input_tensor = preprocess(input_image)
-                input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
-            
-                t = timer() - t_start
-                times.append(t)
+    for i in range(n_tests):
+        img = Image.open(img_list[i])
+        t_start = timer()
+
+        # Preprocess image
+        preprocess = transforms.Compose([  
+        transforms.CenterCrop(256),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        process
+        ])
+        input_tensor = preprocess(img)
+        input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
+
+        t = timer() - t_start
+        times.append(t)
 
     t_min = min(times)
     t_max = max(times)
@@ -150,25 +161,38 @@ def py_test_cmn(process, text, n_tests):
                 
     return t_min, t_max, t_avg, t_stddv
 
-def test(pipeline, text, batch, n_threads, n_tests):
-    
-    pipe = pipeline(batch_size=batch, num_threads=n_threads, device_id=0)
+global pipe_img
 
+def test(pipeline, text, batch, n_threads, n_tests):
+    times = []
+    eii = ExternalInputIterator(batch)
+    print("hi2")
+    pipe = decode_pipeline(batch_size=batch, num_threads=6, device_id=0)
+    with pipe:
+        jpegs = fn.external_source(source=eii, num_outputs=1)
+        images = fn.decoders.image(jpegs, device="mixed")
+        # enhance = fn.brightness_contrast(decode, contrast=2)
+        t_start = timer()
+        images = fn.crop(
+            images,
+            crop=(0,0)
+        )
+        t = timer() - t_start
+        times.append(t)
+        print("hi1")
+        pipe.set_outputs(images)
     pipe.build()
+    
     # warmup
     for _ in range(10):
         pipe.run()
 
-    times = []
-
     # test    
     for _ in range(n_tests):
-        t_start = timer()
+        #t_start = timer()
 
         pipe.run()
-        #pp = pipe.run().__getitem__(0).as_tensor()
-        #print(os.path.join(root, name))
-        #pipe.run()
+        
         t = timer() - t_start
         times.append(t)
 
@@ -184,22 +208,34 @@ def test(pipeline, text, batch, n_threads, n_tests):
 
 
 @pipeline_def
-def cpu_crop_pipeline():
+def decode_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
-    images = fn.crop(
-        images,
-        crop=(0,0)
-    )
-    
+
     return images, labels
+
+@pipeline_def
+def cpu_crop_pipeline():
+    pass
+    print("hi3")
+    # jpegs, labels = fn.readers.file(
+    #     file_root=dir, random_shuffle=False)
+    # images = fn.decoders.image(jpegs, device='cpu')
+    
+    # images = fn.crop(
+    #     images,
+    #     crop=(0,0)
+    # )
+
+    # return images, labels
 
 @pipeline_def
 def gpu_crop_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.crop(
         images,
         crop=(0,0)
@@ -210,11 +246,12 @@ def gpu_crop_pipeline():
 @pipeline_def
 def cpu_rotate_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
+    
     images = fn.rotate(
         images,
-        angle=math.pi/2
+        angle=fn.random.uniform(range=(-45, 45))
     )
     
     return images, labels
@@ -222,11 +259,12 @@ def cpu_rotate_pipeline():
 @pipeline_def
 def gpu_rotate_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.rotate(
         images,
-        angle=math.pi/2
+        angle=fn.random.uniform(range=(-45, 45))
     )
     
     return images, labels
@@ -234,8 +272,9 @@ def gpu_rotate_pipeline():
 @pipeline_def
 def cpu_flip_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
+    
     images = fn.flip(
         images,
         horizontal=1
@@ -246,8 +285,9 @@ def cpu_flip_pipeline():
 @pipeline_def
 def gpu_flip_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.flip(
         images,
         horizontal=1
@@ -258,8 +298,9 @@ def gpu_flip_pipeline():
 @pipeline_def
 def cpu_resize_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
+    
     images = fn.resize(
         images,
         resize_x=256,
@@ -271,8 +312,9 @@ def cpu_resize_pipeline():
 @pipeline_def
 def gpu_resize_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.resize(
         images,
         resize_x=256,
@@ -284,8 +326,9 @@ def gpu_resize_pipeline():
 @pipeline_def
 def cpu_normalize_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
+    
     images = fn.normalize(
         images
     )
@@ -295,8 +338,9 @@ def cpu_normalize_pipeline():
 @pipeline_def
 def gpu_normalize_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.normalize(
         images
     )
@@ -306,8 +350,9 @@ def gpu_normalize_pipeline():
 @pipeline_def
 def cpu_crop_mirror_normalize_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
+    
     images = fn.crop(
         images,
         crop=(0,0),
@@ -325,8 +370,9 @@ def cpu_crop_mirror_normalize_pipeline():
 @pipeline_def
 def gpu_crop_mirror_normalize_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.crop(
         images
     )
@@ -343,15 +389,12 @@ def gpu_crop_mirror_normalize_pipeline():
 @pipeline_def
 def cpu_cmn_combo_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
+    
     images = fn.crop_mirror_normalize(
         images,
-        crop=(0,0),
-            #find correct mean and std for image
-            dtype=types.FLOAT,
-            mean=95,
-            std=95
+        crop=(0,0)
     )
     
     return images, labels
@@ -359,18 +402,40 @@ def cpu_cmn_combo_pipeline():
 @pipeline_def
 def gpu_cmn_combo_pipeline():
     jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=True, initial_fill=21)
+        file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    
     images = fn.crop_mirror_normalize(
         images,
-        crop=(0,0),
-            #find correct mean and std for image
-            dtype=types.FLOAT,
-            mean=95,
-            std=95
+        crop=(0,0)
     )
     
     return images, labels
+
+class ExternalInputIterator(object):
+    def __init__(self, batch_size):
+        self.images_dir = dir
+        self.batch_size = batch_size
+        with open("file_list.txt", 'r') as f:
+            self.files = [line.rstrip() for line in f if line != '']
+        #shuffle(self.files)
+       
+
+    def __iter__(self):
+        self.i = 0
+        self.n = len(self.files)
+        return self
+
+    def __next__(self):
+        batch = []
+        labels = []
+        for _ in range(self.batch_size):
+            jpeg_filename = self.files[self.i]
+            f = open(self.images_dir + "/" + jpeg_filename, 'rb')
+            batch.append(np.frombuffer(f.read(), dtype = np.uint8))
+            #labels.append(np.array([label], dtype = np.uint8))
+            self.i = (self.i + 1) % self.n
+        return (batch, labels)
 
 def main():
     print("This is the beginning...")
@@ -380,18 +445,17 @@ def main():
 
     #PyTorch Transforms
     print("PyTorch Transforms")
-    py_crop_min, py_crop_max, py_crop_avg, py_crop_stddv = py_test(transforms.CenterCrop(256), "Crop: ",n_tests)
+    py_crop_min, py_crop_max, py_crop_avg, py_crop_stddv = py_test(transforms.RandomCrop((128,128)), "Crop: ",n_tests)
     print("-----")
-    
-    py_rotate_min, py_rotate_max, py_rotate_avg, py_rotate_stddv = py_test(transforms.RandomRotation(90), "Rotate: ",n_tests)
+    py_rotate_min, py_rotate_max, py_rotate_avg, py_rotate_stddv = py_test(transforms.RandomRotation(degrees=10), "Rotate: ",n_tests)
     print("-----")
     py_flip_min, py_flip_max, py_flip_avg, py_flip_stddv = py_test(transforms.RandomHorizontalFlip(), "Flip: ",n_tests)
     print("-----")
-    py_resize_min, py_resize_max, py_resize_avg, py_resize_stddv = py_test(transforms.Resize(256), "Resize: ",n_tests)
+    py_resize_min, py_resize_max, py_resize_avg, py_resize_stddv = py_test(transforms.Resize(size=(256,256)), "Resize: ",n_tests)
     print("-----")
     py_norm_min, py_norm_max, py_norm_avg, py_norm_stddv = py_test_norm(transforms.Normalize((0.5), (0.5)), "Normalize: ",n_tests)
     print("-----")
-    py_cmn_min, py_cmn_max, py_cmn_avg, py_cmn_stddv = py_test_cmn(transforms.Normalize((0.5), (0.5)),"CMn: ",n_tests)
+    py_cmn_min, py_cmn_max, py_cmn_avg, py_cmn_stddv = py_test_cmn(transforms.Normalize(mean=(0.5), std=(0.5)),"CMn: ",n_tests)
 
     print("==============================\n")
     
@@ -459,6 +523,7 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
+    plt.savefig('charts/crop.png')
     
     #rotate data
     data = [
@@ -482,7 +547,7 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
-    
+    plt.savefig('charts/rotate.png')
     
     #flip data
     data = [
@@ -506,6 +571,7 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
+    plt.savefig('charts/flip.png')
 
     #Resize data
     data = [
@@ -529,6 +595,7 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
+    plt.savefig('charts/resize.png')
 
     #Normalize Data
     data = [
@@ -552,6 +619,7 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
+    plt.savefig('charts/normalize.png')
 
     #Sequential Crop Mirror Normalize Data
     data = [
@@ -575,6 +643,7 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
+    plt.savefig('charts/seq_cmn.png')
 
     #Combined Crop Mirror Normalize Data
     data = [
@@ -598,8 +667,9 @@ def main():
     handles = [plt.Rectangle((0,0),1,1, color=colors[label]) for label in labels]
     plt.legend(handles, labels)
     plt.plot()
-    
-    plt.show()
+    plt.savefig('charts/comb_cmn.png')
+
+    #plt.show()
 
 if __name__ == "__main__":
     main()
