@@ -68,7 +68,7 @@ def py_test(process, text, n_tests):
         ])
         input_tensor = preprocess(img)
         input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
-
+        input_batch
         t = timer() - t_start
         times.append(t)
                 
@@ -107,7 +107,7 @@ def py_test_norm(process, text, n_tests):
         ])
         input_tensor = preprocess(img)
         input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
-
+        input_batch
         t = timer() - t_start
         times.append(t)
 
@@ -148,7 +148,7 @@ def py_test_cmn(process, text, n_tests):
         ])
         input_tensor = preprocess(img)
         input_batch = input_tensor.unsqueeze(0)  # create a mini-batch as expected by the model
-
+        input_batch
         t = timer() - t_start
         times.append(t)
 
@@ -177,7 +177,6 @@ def test(pipeline, text, batch, n_threads, n_tests):
 
     
     pipe = pipeline(batch_size=batch, num_threads=6, device_id=0)
-    
         
 
     pipe.build()
@@ -240,7 +239,7 @@ def rotate_pipeline():
     
     images = fn.rotate(
         pipe_img,
-        angle=45
+        angle=10
     )
     
     return images
@@ -263,8 +262,7 @@ def resize_pipeline():
     images = fn.resize(
         pipe_img,
         resize_x=256,
-        resize_y=256,
-        mode="not_smaller")
+        resize_y=256)
     
     return images
 
@@ -273,7 +271,9 @@ def normalize_pipeline():
     global pipe_img
     
     images = fn.normalize(
-        pipe_img
+        pipe_img,
+        mean=0.5,
+        stddev=0.5
     )
     
     return images
