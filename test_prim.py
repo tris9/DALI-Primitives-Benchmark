@@ -59,8 +59,8 @@ def py_test(process, text, n_tests):
     
     for i in range(n_tests):
         
-        img = Image.open(img_list[i])
         t_start = timer()
+        img = Image.open(img_list[i])
         # Preprocess image
         preprocess = transforms.Compose([  
         process,
@@ -97,9 +97,9 @@ def py_test_norm(process, text, n_tests):
                 img_list.append(os.path.join(subdir, filename))
 
     for i in range(n_tests):
-        img = Image.open(img_list[i])
+        
         t_start = timer()
-
+        img = Image.open(img_list[i])
         # Preprocess image
         preprocess = transforms.Compose([  
         transforms.ToTensor(),
@@ -136,9 +136,9 @@ def py_test_cmn(process, text, n_tests):
                 img_list.append(os.path.join(subdir, filename))
 
     for i in range(n_tests):
-        img = Image.open(img_list[i])
+        
         t_start = timer()
-
+        img = Image.open(img_list[i])
         # Preprocess image
         preprocess = transforms.Compose([  
         transforms.CenterCrop(256),
@@ -162,35 +162,33 @@ def py_test_cmn(process, text, n_tests):
     return t_min, t_max, t_avg, t_stddv
 
 global pipe_img
-
 def test(pipeline, text, batch, n_threads, n_tests):
+    global pipe_img
     times = []
-    eii = ExternalInputIterator(batch)
-    print("hi2")
-    pipe = decode_pipeline(batch_size=batch, num_threads=6, device_id=0)
-    with pipe:
-        jpegs = fn.external_source(source=eii, num_outputs=1)
-        images = fn.decoders.image(jpegs, device="mixed")
-        # enhance = fn.brightness_contrast(decode, contrast=2)
-        t_start = timer()
-        images = fn.crop(
-            images,
-            crop=(0,0)
-        )
-        t = timer() - t_start
-        times.append(t)
-        print("hi1")
-        pipe.set_outputs(images)
-    pipe.build()
+    if(text[0:3] == "CPU"):
+        decode_pipe = decode_cpu(batch_size=batch, num_threads=6, device_id=0)
+
+    else:
+        decode_pipe = decode_gpu(batch_size=batch, num_threads=6, device_id=0)
+
+    decode_pipe.build()
     
+    decode_pipe.run()
+
+    
+    pipe = pipeline(batch_size=batch, num_threads=6, device_id=0)
+    
+        
+
+    pipe.build()
     # warmup
     for _ in range(10):
         pipe.run()
 
     # test    
     for _ in range(n_tests):
-        #t_start = timer()
-
+        t_start = timer()
+        
         pipe.run()
         
         t = timer() - t_start
@@ -206,156 +204,86 @@ def test(pipeline, text, batch, n_threads, n_tests):
 
     return t_min, t_max, t_avg, t_stddv
 
-
 @pipeline_def
-def decode_pipeline():
+def decode_cpu():
+    global pipe_img
     jpegs, labels = fn.readers.file(
         file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='cpu')
-
+    pipe_img = images
     return images, labels
 
 @pipeline_def
-def cpu_crop_pipeline():
-    pass
-    print("hi3")
-    # jpegs, labels = fn.readers.file(
-    #     file_root=dir, random_shuffle=False)
-    # images = fn.decoders.image(jpegs, device='cpu')
-    
-    # images = fn.crop(
-    #     images,
-    #     crop=(0,0)
-    # )
-
-    # return images, labels
-
-@pipeline_def
-def gpu_crop_pipeline():
+def decode_gpu():
+    global pipe_img
     jpegs, labels = fn.readers.file(
         file_root=dir, random_shuffle=False)
     images = fn.decoders.image(jpegs, device='mixed')
+    pipe_img = images
+    return images, labels
+
+@pipeline_def
+def crop_pipeline():
+    global pipe_img
     
     images = fn.crop(
-        images,
+        pipe_img,
         crop=(0,0)
     )
-    
-    return images, labels
+
+    return images
+
 
 @pipeline_def
-def cpu_rotate_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='cpu')
+def rotate_pipeline():
+    global pipe_img
     
     images = fn.rotate(
-        images,
-        angle=fn.random.uniform(range=(-45, 45))
+        pipe_img,
+        angle=45
     )
     
-    return images, labels
+    return images
 
 @pipeline_def
-def gpu_rotate_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='mixed')
-    
-    images = fn.rotate(
-        images,
-        angle=fn.random.uniform(range=(-45, 45))
-    )
-    
-    return images, labels
-
-@pipeline_def
-def cpu_flip_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='cpu')
+def flip_pipeline():
+    global pipe_img
     
     images = fn.flip(
-        images,
+        pipe_img,
         horizontal=1
     )
     
-    return images, labels
+    return images
 
 @pipeline_def
-def gpu_flip_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='mixed')
-    
-    images = fn.flip(
-        images,
-        horizontal=1
-    )
-    
-    return images, labels
-
-@pipeline_def
-def cpu_resize_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='cpu')
+def resize_pipeline():
+    global pipe_img
     
     images = fn.resize(
-        images,
+        pipe_img,
         resize_x=256,
         resize_y=256,
         mode="not_smaller")
     
-    return images, labels
+    return images
 
 @pipeline_def
-def gpu_resize_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='mixed')
-    
-    images = fn.resize(
-        images,
-        resize_x=256,
-        resize_y=256,
-        mode="not_smaller")
-    
-    return images, labels
-
-@pipeline_def
-def cpu_normalize_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='cpu')
+def normalize_pipeline():
+    global pipe_img
     
     images = fn.normalize(
-        images
+        pipe_img
     )
     
-    return images, labels
+    return images
 
 @pipeline_def
-def gpu_normalize_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='mixed')
-    
-    images = fn.normalize(
-        images
-    )
-    
-    return images, labels
-
-@pipeline_def
-def cpu_crop_mirror_normalize_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='cpu')
+def crop_mirror_normalize_pipeline():
+    global pipe_img
     
     images = fn.crop(
-        images,
-        crop=(0,0),
+        pipe_img
     )
     images = fn.flip(
         images,
@@ -365,52 +293,18 @@ def cpu_crop_mirror_normalize_pipeline():
         images
     )
     
-    return images, labels
+    return images
 
 @pipeline_def
-def gpu_crop_mirror_normalize_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='mixed')
-    
-    images = fn.crop(
-        images
-    )
-    images = fn.flip(
-        images,
-        horizontal=1
-    )
-    images = fn.normalize(
-        images
-    )
-    
-    return images, labels
-
-@pipeline_def
-def cpu_cmn_combo_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='cpu')
+def cmn_combo_pipeline():
+    global pipe_img
     
     images = fn.crop_mirror_normalize(
-        images,
+        pipe_img,
         crop=(0,0)
     )
     
-    return images, labels
-
-@pipeline_def
-def gpu_cmn_combo_pipeline():
-    jpegs, labels = fn.readers.file(
-        file_root=dir, random_shuffle=False)
-    images = fn.decoders.image(jpegs, device='mixed')
-    
-    images = fn.crop_mirror_normalize(
-        images,
-        crop=(0,0)
-    )
-    
-    return images, labels
+    return images
 
 class ExternalInputIterator(object):
     def __init__(self, batch_size):
@@ -441,7 +335,7 @@ def main():
     print("This is the beginning...")
 
     test_batch_size = 1
-    n_tests = 128
+    n_tests = 32
 
     #PyTorch Transforms
     print("PyTorch Transforms")
@@ -460,46 +354,46 @@ def main():
     print("==============================\n")
     
     #DALI CPU and GPU individual primitives
-    cpu_crop_min, cpu_crop_max, cpu_crop_avg, cpu_crop_stddv = test(cpu_crop_pipeline, "CPU Crop: ", test_batch_size, 4, n_tests)
+    cpu_crop_min, cpu_crop_max, cpu_crop_avg, cpu_crop_stddv = test(crop_pipeline, "CPU Crop: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_crop_min, gpu_crop_max, gpu_crop_avg, gpu_crop_stddv = test(gpu_crop_pipeline, "GPU Crop: ", test_batch_size, 4, n_tests)
+    gpu_crop_min, gpu_crop_max, gpu_crop_avg, gpu_crop_stddv = test(crop_pipeline, "GPU Crop: ", test_batch_size, 4, n_tests)
 
     print("==============================\n")
     
-    cpu_rotate_min, cpu_rotate_max, cpu_rotate_avg, cpu_rotate_stddv = test(cpu_rotate_pipeline, "CPU Rotate: ", test_batch_size, 4, n_tests)
+    cpu_rotate_min, cpu_rotate_max, cpu_rotate_avg, cpu_rotate_stddv = test(rotate_pipeline, "CPU Rotate: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_rotate_min, gpu_rotate_max, gpu_rotate_avg, gpu_rotate_stddv = test(gpu_rotate_pipeline, "GPU Rotate: ", test_batch_size, 4, n_tests)
+    gpu_rotate_min, gpu_rotate_max, gpu_rotate_avg, gpu_rotate_stddv = test(rotate_pipeline, "GPU Rotate: ", test_batch_size, 4, n_tests)
 
     print("==============================\n")
 
-    cpu_flip_min, cpu_flip_max, cpu_flip_avg, cpu_flip_stddv = test(cpu_flip_pipeline, "CPU Flip: ", test_batch_size, 4, n_tests)
+    cpu_flip_min, cpu_flip_max, cpu_flip_avg, cpu_flip_stddv = test(flip_pipeline, "CPU Flip: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_flip_min, gpu_flip_max, gpu_flip_avg, gpu_flip_stddv = test(gpu_flip_pipeline, "GPU Flip: ", test_batch_size, 4, n_tests)
+    gpu_flip_min, gpu_flip_max, gpu_flip_avg, gpu_flip_stddv = test(flip_pipeline, "GPU Flip: ", test_batch_size, 4, n_tests)
 
     print("==============================\n")
 
-    cpu_resize_min, cpu_resize_max, cpu_resize_avg, cpu_resize_stddv = test(cpu_resize_pipeline, "CPU Resize: ", test_batch_size, 4, n_tests)
+    cpu_resize_min, cpu_resize_max, cpu_resize_avg, cpu_resize_stddv = test(resize_pipeline, "CPU Resize: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_resize_min, gpu_resize_max, gpu_resize_avg, gpu_resize_stddv = test(gpu_resize_pipeline, "GPU Resize: ", test_batch_size, 4, n_tests)
+    gpu_resize_min, gpu_resize_max, gpu_resize_avg, gpu_resize_stddv = test(resize_pipeline, "GPU Resize: ", test_batch_size, 4, n_tests)
 
     print("==============================\n")
 
-    cpu_norm_min, cpu_norm_max, cpu_norm_avg, cpu_norm_stddv = test(cpu_normalize_pipeline, "CPU Normalize: ", test_batch_size, 4, n_tests)
+    cpu_norm_min, cpu_norm_max, cpu_norm_avg, cpu_norm_stddv = test(normalize_pipeline, "CPU Normalize: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_norm_min, gpu_norm_max, gpu_norm_avg, gpu_norm_stddv = test(gpu_normalize_pipeline, "GPU Normalize: ", test_batch_size, 4, n_tests)
+    gpu_norm_min, gpu_norm_max, gpu_norm_avg, gpu_norm_stddv = test(normalize_pipeline, "GPU Normalize: ", test_batch_size, 4, n_tests)
 
     print("==============================\n")
 
-    cpu_crop_mirror_norm_min, cpu_crop_mirror_norm_max, cpu_crop_mirror_norm_avg, cpu_crop_mirror_norm_stddv = test(cpu_crop_mirror_normalize_pipeline, "CPU Crop,Flip,Normalize: ", test_batch_size, 4, n_tests)
+    cpu_crop_mirror_norm_min, cpu_crop_mirror_norm_max, cpu_crop_mirror_norm_avg, cpu_crop_mirror_norm_stddv = test(crop_mirror_normalize_pipeline, "CPU Crop,Flip,Normalize: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_crop_mirror_norm_min, gpu_crop_mirror_norm_max, gpu_crop_mirror_norm_avg, gpu_crop_mirror_norm_stddv = test(gpu_crop_mirror_normalize_pipeline, "GPU Crop,Flip,Normalize: ", test_batch_size, 4, n_tests)
+    gpu_crop_mirror_norm_min, gpu_crop_mirror_norm_max, gpu_crop_mirror_norm_avg, gpu_crop_mirror_norm_stddv = test(crop_mirror_normalize_pipeline, "GPU Crop,Flip,Normalize: ", test_batch_size, 4, n_tests)
 
     print("==============================\n")
 
     #DALI CPU and GPU combined primitives
-    cpu_cmn_min, cpu_cmn_max, cpu_cmn_avg, cpu_cmn_stddv = test(cpu_cmn_combo_pipeline, "CPU CMn: ", test_batch_size, 4, n_tests)
+    cpu_cmn_min, cpu_cmn_max, cpu_cmn_avg, cpu_cmn_stddv = test(cmn_combo_pipeline, "CPU CMn: ", test_batch_size, 4, n_tests)
     print("-----")
-    gpu_cmn_min, gpu_cmn_max, gpu_cmn_avg, gpu_cmn_stddv = test(gpu_cmn_combo_pipeline, "GPU CMn: ", test_batch_size, 4, n_tests)
+    gpu_cmn_min, gpu_cmn_max, gpu_cmn_avg, gpu_cmn_stddv = test(cmn_combo_pipeline, "GPU CMn: ", test_batch_size, 4, n_tests)
     
     #crop data
     data = [
